@@ -1,0 +1,13 @@
+# Dependensi Python untuk transkripsi lokal Clipflow.
+#
+# Instalasi yang disarankan (Windows):
+#   python -m venv .venv
+#   .venv\Scripts\activate
+#   pip install --upgrade pip
+#   pip install -r requirements.txt
+#
+# Jika ingin memakai GPU, ikuti panduan CUDA dari faster-whisper:
+# https://github.com/SYSTRAN/faster-whisper
+faster-whisper==1.1.1
+requests>=2.31
+yt-dlp>=2024.12.13

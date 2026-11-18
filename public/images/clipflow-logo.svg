@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120" role="img" aria-label="clipflow.">
+  <g fill="none" stroke="#0E5A46" stroke-width="9" stroke-linecap="round" transform="translate(6 12) scale(2)">
+    <line x1="6" y1="24" x2="42" y2="24"/>
+    <line x1="24" y1="6" x2="24" y2="42"/>
+    <line x1="11.27" y1="11.27" x2="36.73" y2="36.73"/>
+    <line x1="11.27" y1="36.73" x2="36.73" y2="11.27"/>
+  </g>
+  <text x="112" y="80" fill="#0F172A" font-family="'Segoe UI', Inter, Arial, Helvetica, sans-serif" font-size="62" font-weight="700" letter-spacing="-2.4">clipflow<tspan fill="#6FA82F">.</tspan></text>
+</svg>
