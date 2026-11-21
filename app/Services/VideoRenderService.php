@@ -23,6 +23,8 @@ class VideoRenderService
     {
         $width = (int) config('clipflow.media.render.width');
         $height = (int) config('clipflow.media.render.height');
+        $fps = (int) config('clipflow.media.render.fps', 30);
+        $fps = $fps >= 1 && $fps <= 120 ? $fps : 30;
         $start = (float) $clip->start_seconds;
         $duration = (float) $clip->duration_seconds;
         $foregroundPercent = $this->clampInt(
@@ -81,7 +83,7 @@ class VideoRenderService
             $blurSigma,
             $foregroundWidth,
             $foregroundHeight,
-            (int) config('clipflow.media.render.fps'),
+            $fps,
             $subtitleFilter,
         );
 
@@ -100,7 +102,7 @@ class VideoRenderService
                 '-c:v', 'libx264',
                 '-preset', (string) config('clipflow.media.render.preset'),
                 '-crf', (string) config('clipflow.media.render.crf'),
-                '-r', (string) config('clipflow.media.render.fps'),
+                '-r', (string) $fps,
                 '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac',
                 '-b:a', (string) config('clipflow.media.render.audio_bitrate'),
@@ -109,7 +111,7 @@ class VideoRenderService
             ], (int) config('clipflow.media.render.timeout'));
         } catch (\Throwable $exception) {
             throw new RenderingException(
-                'Render klip gagal. Pastikan FFmpeg tersedia; subtitle juga memerlukan build dengan libass.',
+                'Render klip gagal: '.mb_substr($exception->getMessage(), 0, 1000),
                 'render_ffmpeg',
                 $exception,
             );
