@@ -58,6 +58,37 @@
         <div class="card card-pad"><p class="label">Hak penggunaan</p><p class="mt-2 text-lg font-extrabold">✓ Dikonfirmasi</p><p class="mt-1 text-xs text-slate-400">{{ $source->rights_confirmed_at?->format('d M Y H:i') }}</p></div>
     </div>
 
+    @if ($source->probed_at !== null && ! $source->is_demo && $source->duration_seconds !== null)
+        <div class="card card-pad">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h3 class="font-bold text-slate-900">Tambah klip manual</h3>
+                    <p class="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">
+                        Tanpa transkripsi atau AI pun Anda dapat membuat klip: isi detik mulai dan selesai pada sumber
+                        (total {{ number_format((float) $source->duration_seconds, 1) }} detik).
+                        Batas durasi {{ (int) max(1, config('clipflow.ai.min_clip_seconds')) }}–{{ (int) config('clipflow.ai.max_clip_seconds') }} detik.
+                        Jika transkripsi tersedia, batas klip disamakan ke batas kalimat terdekat agar tidak terpotong.
+                    </p>
+                </div>
+                <span class="badge bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200">Manual · bukan AI</span>
+            </div>
+
+            <div class="mt-4 grid gap-3 sm:grid-cols-4">
+                <div><label class="label" for="manual-start">Mulai (detik)</label><input id="manual-start" type="number" step="0.1" min="0" max="{{ number_format((float) $source->duration_seconds, 1) }}" wire:model="manualStart" class="input" placeholder="mis. 10"></div>
+                <div><label class="label" for="manual-end">Selesai (detik)</label><input id="manual-end" type="number" step="0.1" min="0" max="{{ number_format((float) $source->duration_seconds, 1) }}" wire:model="manualEnd" class="input" placeholder="mis. 50"></div>
+                <div class="sm:col-span-2"><label class="label" for="manual-title">Judul (opsional)</label><input id="manual-title" type="text" maxlength="200" wire:model="manualTitle" class="input" placeholder="Kosongkan untuk judul otomatis"></div>
+            </div>
+            <div class="mt-3 flex items-center justify-between gap-3">
+                <div class="text-xs text-rose-600">@error('manualStart')<span>{{ $message }}</span>@enderror @error('manualEnd')<span class="ml-2">{{ $message }}</span>@enderror @error('manualTitle')<span class="ml-2">{{ $message }}</span>@enderror</div>
+                <button wire:click="createManualClip" wire:loading.attr="disabled" class="btn-primary shrink-0">Buat klip → render</button>
+            </div>
+            <p class="mt-2 text-[11px] text-slate-400">Render berjalan di background. Klip muncul di daftar dengan status “Sedang dirender”.</p>
+            @if (! $source->transcript && $source->has_audio)
+                <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">Transkripsi belum tersedia — pipeline AI memerlukan faster-whisper dan kredensial LLM (cek <code>php artisan clipflow:check</code>). Klip manual tetap dapat dirender tanpa AI; aktifkan subtitle setelah transkrip tersedia.</p>
+            @endif
+        </div>
+    @endif
+
     <div class="grid gap-6 xl:grid-cols-3">
         <div class="card card-pad xl:col-span-2">
             <div class="flex items-center justify-between">
@@ -66,7 +97,7 @@
             </div>
 
             @if ($source->clips->isEmpty())
-                <div class="rounded-xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-400">Belum ada klip. Klip dibuat otomatis setelah transkripsi dan seleksi AI selesai.</div>
+                <div class="rounded-xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-400">Belum ada klip. Klip dibuat otomatis setelah transkripsi dan seleksi AI selesai, atau tambahkan klip manual di atas.</div>
             @else
                 <div class="mt-5 overflow-x-auto">
                     <table class="w-full min-w-[640px] text-left text-sm">

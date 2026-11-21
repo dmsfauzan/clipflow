@@ -31,10 +31,10 @@ class SubtitleStyleTest extends TestCase
 
         $ass = $this->renderAndReadAss($clip, $source);
 
-        $this->assertStringContainsString('PlayResX: 720', $ass);
+        $this->assertStringContainsString('PlayResX: 1080', $ass);
         $this->assertStringContainsString('Style: Default,Arial,24,', $ass);
         $this->assertStringContainsString('&H66000000', $ass);
-        $this->assertStringContainsString(',1,1,0,2,30,30,488,1', $ass);
+        $this->assertStringContainsString(',1,1,0,2,30,30,737,1', $ass);
         $this->assertStringContainsString('Dialogue: 0,0:00:00.00,0:00:10.00', $ass);
     }
 
@@ -52,7 +52,7 @@ class SubtitleStyleTest extends TestCase
 
         $ass = $this->renderAndReadAss($clip, $source);
 
-        $this->assertStringContainsString(',8,30,30,458,1', $ass);
+        $this->assertStringContainsString(',8,30,30,707,1', $ass);
     }
 
     public function test_background_box_uses_template_color_and_opacity(): void

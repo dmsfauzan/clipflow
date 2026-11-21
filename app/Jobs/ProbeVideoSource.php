@@ -76,6 +76,18 @@ class ProbeVideoSource implements ShouldBeUnique, ShouldQueue
                 'probed_at' => now(),
             ]);
 
+            if (! $info['has_audio']) {
+                $source->update([
+                    'status' => VideoSourceStatus::Ready,
+                    'processing_stage' => 'Tanpa audio — transkripsi dilewati',
+                    'processed_at' => now(),
+                ]);
+
+                $activity->log('source.ready', sprintf('Sumber "%s" tanpa audio. Transkripsi dan seleksi AI dilewati; buat klip dengan timestamp manual.', $source->original_name), $source);
+
+                return;
+            }
+
             TranscribeVideoSource::dispatch($source);
         } catch (MediaProcessingException $exception) {
             $source->update([

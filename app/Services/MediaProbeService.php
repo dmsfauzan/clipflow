@@ -59,17 +59,23 @@ class MediaProbeService
             throw new MediaProcessingException('File tidak memiliki stream video yang valid.', 'media_probe');
         }
 
-        if ($audioStream === null) {
-            throw new MediaProcessingException(
-                'File tidak memiliki stream audio. Audio diperlukan untuk transkripsi.',
-                'media_probe',
-            );
-        }
-
         $duration = $this->durationFrom($data, $videoStream);
 
         if ($duration <= 0) {
             throw new MediaProcessingException('Durasi video tidak dapat ditentukan.', 'media_probe');
+        }
+
+        if ($audioStream === null) {
+            return [
+                'duration_seconds' => round($duration, 3),
+                'width' => (int) ($videoStream['width'] ?? 0),
+                'height' => (int) ($videoStream['height'] ?? 0),
+                'has_video' => true,
+                'has_audio' => false,
+                'video_codec' => $videoStream['codec_name'] ?? null,
+                'audio_codec' => null,
+                'container' => $data['format']['format_name'] ?? null,
+            ];
         }
 
         return [

@@ -36,6 +36,16 @@ class ReviewPanel extends AuthenticatedComponent
 
     public ?int $subtitleTemplateId = null;
 
+    public $renderStart = null;
+
+    public $renderEnd = null;
+
+    public int $foregroundWidth = 90;
+
+    public int $blurSigma = 18;
+
+    public bool $subtitlesEnabled = true;
+
     public function mount(Clip $clip, SettingsService $settings): void
     {
         abort_unless(auth()->user()?->id === $clip->user_id, 403);
@@ -44,6 +54,11 @@ class ReviewPanel extends AuthenticatedComponent
         $this->title = (string) $clip->title;
         $this->caption = (string) $clip->caption;
         $this->subtitleTemplateId = $clip->subtitle_template_id;
+        $this->renderStart = (float) $clip->start_seconds;
+        $this->renderEnd = (float) $clip->end_seconds;
+        $this->foregroundWidth = (int) ($clip->foreground_width ?: config('clipflow.media.render.foreground_width_percent.default'));
+        $this->blurSigma = (int) ($clip->blur_sigma ?? config('clipflow.media.render.blur_sigma.default'));
+        $this->subtitlesEnabled = (bool) ($clip->subtitles_enabled ?? true);
 
         $channel = PublishingChannel::query()
             ->where('user_id', auth()->id())
@@ -171,8 +186,40 @@ class ReviewPanel extends AuthenticatedComponent
 
     public function rerender(ClipRerenderService $rerender): void
     {
+        $this->updateRender($rerender);
+    }
+
+    public function updateRender(ClipRerenderService $rerender): void
+    {
+        $sourceDuration = (float) ($this->clip->videoSource->duration_seconds ?? 0);
+        $minClip = max(1.0, (float) config('clipflow.ai.min_clip_seconds'));
+        $maxClip = max($minClip, (float) config('clipflow.ai.max_clip_seconds'));
+
+        $this->validate([
+            'renderStart' => ['required', 'numeric', 'min:0', 'max:'.$sourceDuration],
+            'renderEnd' => ['required', 'numeric', 'gt:renderStart', 'max:'.$sourceDuration],
+            'foregroundWidth' => ['required', 'integer', 'min:'.config('clipflow.media.render.foreground_width_percent.min'), 'max:'.config('clipflow.media.render.foreground_width_percent.max')],
+            'blurSigma' => ['required', 'integer', 'min:'.config('clipflow.media.render.blur_sigma.min'), 'max:'.config('clipflow.media.render.blur_sigma.max')],
+        ], [
+            'renderEnd.gt' => 'Waktu selesai harus lebih besar dari waktu mulai.',
+            'renderEnd.max' => 'Waktu selesai melebihi durasi sumber.',
+        ]);
+
+        if ((float) $this->renderEnd - (float) $this->renderStart < $minClip || (float) $this->renderEnd - (float) $this->renderStart > $maxClip) {
+            $this->addError('renderEnd', sprintf('Durasi klip harus %d–%d detik.', (int) $minClip, (int) $maxClip));
+
+            return;
+        }
+
         try {
-            $rerender->queue($this->clip);
+            $this->clip = $rerender->updateSettings($this->clip, auth()->user(), [
+                'start_seconds' => round((float) $this->renderStart, 3),
+                'end_seconds' => round((float) $this->renderEnd, 3),
+                'duration_seconds' => round((float) $this->renderEnd - (float) $this->renderStart, 3),
+                'foreground_width' => $this->foregroundWidth,
+                'blur_sigma' => $this->blurSigma,
+                'subtitles_enabled' => $this->subtitlesEnabled,
+            ]);
         } catch (\Throwable $exception) {
             $this->addError('rerender', $exception->getMessage());
 
@@ -180,7 +227,7 @@ class ReviewPanel extends AuthenticatedComponent
         }
 
         $this->clip = $this->clip->fresh(['videoSource', 'approvals.user', 'publicationJob.publishingChannel']);
-        $this->dispatch('toast', message: 'Render ulang dijadwalkan dengan gaya subtitle terbaru.');
+        $this->dispatch('toast', message: 'Render ulang dijadwalkan. Approval dan jadwal lama dibatalkan.');
     }
 
     public function applyTemplate(ClipRerenderService $rerender): void

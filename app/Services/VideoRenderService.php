@@ -13,19 +13,32 @@ class VideoRenderService
 {
     public function __construct(
         private readonly ProcessRunner $processes,
-        private readonly SettingsService $settings,
         private readonly SubtitleTemplateService $templates,
     ) {}
 
     /**
-     * @return array{video: string, thumbnail: ?string, subtitle: string, ass: string, size_bytes: int, width: int, height: int, media_hash: string}
+     * @return array{video: string, thumbnail: ?string, subtitle: ?string, ass: ?string, size_bytes: int, width: int, height: int, media_hash: string}
      */
     public function render(Clip $clip, VideoSource $source): array
     {
-        $width = (int) $this->settings->get('pipeline.render_width', config('clipflow.media.render.width'));
-        $height = (int) $this->settings->get('pipeline.render_height', config('clipflow.media.render.height'));
+        $width = (int) config('clipflow.media.render.width');
+        $height = (int) config('clipflow.media.render.height');
         $start = (float) $clip->start_seconds;
         $duration = (float) $clip->duration_seconds;
+        $foregroundPercent = $this->clampInt(
+            $clip->foreground_width,
+            (int) config('clipflow.media.render.foreground_width_percent.min'),
+            (int) config('clipflow.media.render.foreground_width_percent.max'),
+            (int) config('clipflow.media.render.foreground_width_percent.default'),
+        );
+        $blurSigma = $this->clampInt(
+            $clip->blur_sigma,
+            (int) config('clipflow.media.render.blur_sigma.min'),
+            (int) config('clipflow.media.render.blur_sigma.max'),
+            (int) config('clipflow.media.render.blur_sigma.default'),
+        );
+        $foregroundWidth = $this->evenDimension($width * $foregroundPercent / 100);
+        $foregroundHeight = $this->evenDimension($height * $foregroundPercent / 100);
 
         $videoRelative = sprintf('clips/%d/video.mp4', $clip->id);
         $thumbnailRelative = sprintf('clips/%d/thumbnail.jpg', $clip->id);
@@ -40,27 +53,36 @@ class VideoRenderService
         $this->deleteExisting([$videoPath, $thumbnailPath, $subtitlePath, $assPath]);
         File::ensureDirectoryExists(dirname($videoPath));
 
+        $subtitleRelativeResult = null;
+        $assRelativeResult = null;
+        $subtitleFilter = '';
         $transcript = $source->transcript;
 
-        if ($transcript === null) {
-            throw new RenderingException('Transkripsi tidak tersedia untuk klip ini.', 'transcript_missing');
+        if ($clip->subtitles_enabled && $transcript !== null) {
+            $entries = $this->subtitleEntries($start, $duration, $transcript->segments ?? []);
+
+            if ($entries !== []) {
+                $template = $clip->subtitleTemplate
+                    ?? $source->subtitleTemplate
+                    ?? $this->templates->active();
+
+                $this->writeSrt($subtitlePath, $entries);
+                $this->writeAss($assPath, $entries, $width, $height, $template, $this->subtitleMarginV($width, $height, $foregroundPercent, $source, $template));
+                $subtitleRelativeResult = $subtitleRelative;
+                $assRelativeResult = $assRelative;
+                $subtitleFilter = ',ass=filename='.$this->escapeFilterPath($assPath);
+            }
         }
 
-        $entries = $this->subtitleEntries($start, $duration, $transcript->segments ?? []);
-        $template = $clip->subtitleTemplate
-            ?? $source->subtitleTemplate
-            ?? $this->templates->active();
-
-        $this->writeSrt($subtitlePath, $entries);
-        $this->writeAss($assPath, $entries, $width, $height, $template, $this->subtitleMarginV($width, $height, $source, $template));
-
         $videoFilter = sprintf(
-            'scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black,ass=filename=%s',
+            '[0:v]split=2[bg][fg];[bg]scale=%1$d:%2$d:force_original_aspect_ratio=increase,crop=%1$d:%2$d,setsar=1,gblur=sigma=%3$d[background];[fg]scale=%4$d:%5$d:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1[foreground];[background][foreground]overlay=(W-w)/2:(H-h)/2:shortest=1,fps=%6$d%7$s,format=yuv420p[rendered]',
             $width,
             $height,
-            $width,
-            $height,
-            $this->escapeFilterPath($assPath),
+            $blurSigma,
+            $foregroundWidth,
+            $foregroundHeight,
+            (int) config('clipflow.media.render.fps'),
+            $subtitleFilter,
         );
 
         try {
@@ -72,10 +94,13 @@ class VideoRenderService
                 '-ss', $this->timestamp($start),
                 '-i', $this->sourcePath($source),
                 '-t', $this->timestamp($duration),
-                '-vf', $videoFilter,
+                '-filter_complex', $videoFilter,
+                '-map', '[rendered]',
+                '-map', '0:a?',
                 '-c:v', 'libx264',
                 '-preset', (string) config('clipflow.media.render.preset'),
                 '-crf', (string) config('clipflow.media.render.crf'),
+                '-r', (string) config('clipflow.media.render.fps'),
                 '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac',
                 '-b:a', (string) config('clipflow.media.render.audio_bitrate'),
@@ -84,7 +109,7 @@ class VideoRenderService
             ], (int) config('clipflow.media.render.timeout'));
         } catch (\Throwable $exception) {
             throw new RenderingException(
-                'Render klip gagal. Pastikan FFmpeg build mendukung libass untuk burn-in subtitle.',
+                'Render klip gagal. Pastikan FFmpeg tersedia; subtitle juga memerlukan build dengan libass.',
                 'render_ffmpeg',
                 $exception,
             );
@@ -111,15 +136,14 @@ class VideoRenderService
                 $thumbnailPath,
             ], 120);
         } catch (\Throwable) {
-            // Thumbnail bersifat pendukung; kegagalan tidak menggagalkan render.
             $thumbnailRelativeResult = null;
         }
 
         return [
             'video' => $videoRelative,
             'thumbnail' => $thumbnailRelativeResult,
-            'subtitle' => $subtitleRelative,
-            'ass' => $assRelative,
+            'subtitle' => $subtitleRelativeResult,
+            'ass' => $assRelativeResult,
             'size_bytes' => (int) filesize($videoPath),
             'width' => $width,
             'height' => $height,
@@ -159,7 +183,7 @@ class VideoRenderService
         }
 
         if ($entries === []) {
-            throw new RenderingException('Tidak ada segmen subtitle yang tumpang tindih dengan klip.', 'subtitle');
+            return [];
         }
 
         return $entries;
@@ -336,7 +360,7 @@ class VideoRenderService
      * Posisi subtitle dihitung dari tepi bawah area video (bukan dasar frame),
      * supaya teks tidak jatuh di area hitam padding.
      */
-    private function subtitleMarginV(int $targetWidth, int $targetHeight, VideoSource $source, SubtitleTemplate $template): int
+    private function subtitleMarginV(int $targetWidth, int $targetHeight, int $foregroundPercent, VideoSource $source, SubtitleTemplate $template): int
     {
         $inset = $this->clampInt($template->margin_y, 0, 400, 40);
         $sourceWidth = (int) ($source->width ?? 0);
@@ -346,7 +370,9 @@ class VideoRenderService
             return $template->position === 'center' ? 0 : $inset;
         }
 
-        $scale = min($targetWidth / $sourceWidth, $targetHeight / $sourceHeight);
+        $boxWidth = $targetWidth * max(1, $foregroundPercent) / 100;
+        $boxHeight = $targetHeight * max(1, $foregroundPercent) / 100;
+        $scale = min($boxWidth / $sourceWidth, $boxHeight / $sourceHeight);
         $fittedHeight = max(1, (int) round($sourceHeight * $scale));
         $padding = max(0, (int) round(($targetHeight - $fittedHeight) / 2));
         $maxInset = max(0, $fittedHeight - 32);
@@ -356,6 +382,11 @@ class VideoRenderService
             'center' => 0,
             default => $padding + min($inset, $maxInset),
         };
+    }
+
+    private function evenDimension(float $value): int
+    {
+        return max(2, (int) round($value / 2) * 2);
     }
 
     private function escapeAssText(string $text): string

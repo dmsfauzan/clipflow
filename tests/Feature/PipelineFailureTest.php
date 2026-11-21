@@ -31,7 +31,9 @@ class PipelineFailureTest extends TestCase
 
         $this->assertSame(30, $defaults['publishing.daily_limit']);
         $this->assertSame(10000, $defaults['publishing.quota_daily_units']);
-        $this->assertSame(720, $defaults['pipeline.render_width']);
+        $this->assertSame(1080, $defaults['pipeline.render_width']);
+        $this->assertSame(90, $defaults['pipeline.foreground_width_percent']);
+        $this->assertSame(18, $defaults['pipeline.blur_sigma']);
     }
 
     public function test_selection_failure_marks_source_failed_instead_of_stuck_selecting(): void

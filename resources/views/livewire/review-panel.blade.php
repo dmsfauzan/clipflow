@@ -16,7 +16,7 @@
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
         <div class="space-y-5">
             <div class="card overflow-hidden">
-                <div class="aspect-video bg-slate-950">
+                <div class="mx-auto aspect-[9/16] max-h-[70vh] w-full max-w-sm bg-slate-950">
                     @if ($renderedUrl)
                         <video controls preload="metadata" class="h-full w-full object-contain" poster="{{ $thumbnailUrl }}"><source src="{{ $renderedUrl }}" type="video/mp4">Browser tidak mendukung preview video.</video>
                     @else
@@ -24,7 +24,7 @@
                     @endif
                 </div>
                 <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4">
-                    <div class="flex gap-2 text-xs text-slate-500"><span class="rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold">9:16</span><span class="rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold">{{ $clip->rendered_width ?: 720 }}×{{ $clip->rendered_height ?: 1280 }}</span><span class="rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold">H.264 + AAC</span></div>
+                    <div class="flex flex-wrap gap-2 text-xs text-slate-500"><span class="rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold">9:16</span><span class="rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold">{{ $clip->rendered_width ?: 1080 }}×{{ $clip->rendered_height ?: 1920 }}</span><span class="rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold">H.264 + AAC bila ada audio</span><span class="rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold">Foreground {{ $clip->foreground_width }}% · blur {{ $clip->blur_sigma }}</span></div>
                     @if ($downloadUrl)<a href="{{ $downloadUrl }}" class="btn-secondary !py-2 text-xs">↓ Download MP4</a>@endif
                 </div>
             </div>
@@ -36,6 +36,35 @@
                     <div><label class="label" for="clip-caption">Caption</label><textarea id="clip-caption" wire:model="caption" rows="5" class="input resize-y" placeholder="Tulis caption untuk YouTube..." ></textarea><div class="mt-1 text-right text-[10px] text-slate-400">{{ mb_strlen($caption) }}/3000</div>@error('caption')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
                     <button wire:click="saveContent" wire:loading.attr="disabled" class="btn-secondary w-full">Simpan perubahan</button>
                 </div>
+            </div>
+
+            <div class="card card-pad">
+                <h3 class="review-section font-bold text-slate-900">Komposisi render</h3>
+                <p class="mt-1 text-xs leading-relaxed text-slate-400">Preview di atas adalah file ekspor terakhir. Ubah nilai lalu render ulang untuk membuat ekspor baru 1080×1920. Foreground tetap utuh; crop hanya diterapkan pada background blur.</p>
+                <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div><label class="label" for="render-start">Mulai (detik)</label><input id="render-start" type="number" step="0.1" min="0" wire:model="renderStart" class="input">@error('renderStart')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
+                    <div><label class="label" for="render-end">Selesai (detik)</label><input id="render-end" type="number" step="0.1" min="0" wire:model="renderEnd" class="input">@error('renderEnd')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
+                    <div><label class="label" for="foreground-width">Ukuran foreground (%)</label><input id="foreground-width" type="number" min="{{ config('clipflow.media.render.foreground_width_percent.min') }}" max="{{ config('clipflow.media.render.foreground_width_percent.max') }}" wire:model.live="foregroundWidth" class="input"><p class="mt-1 text-[10px] text-slate-400">Default 90%. Area default 972×1728.</p>@error('foregroundWidth')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
+                    <div><label class="label" for="blur-sigma">Blur background (sigma)</label><input id="blur-sigma" type="number" min="{{ config('clipflow.media.render.blur_sigma.min') }}" max="{{ config('clipflow.media.render.blur_sigma.max') }}" wire:model.live="blurSigma" class="input"><p class="mt-1 text-[10px] text-slate-400">Default 18. Nilai 0 mematikan blur.</p>@error('blurSigma')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror</div>
+                </div>
+
+                @if ($thumbnailUrl)
+                    <div class="mt-4 flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div class="relative aspect-[9/16] w-24 shrink-0 overflow-hidden rounded-lg bg-slate-900">
+                            <img src="{{ $thumbnailUrl }}" alt="" class="absolute inset-0 h-full w-full object-cover" style="filter: blur({{ max(0.5, $blurSigma / 3) }}px)">
+                            <img src="{{ $thumbnailUrl }}" alt="" class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 object-contain" style="width: {{ $foregroundWidth }}%">
+                        </div>
+                        <p class="text-[11px] leading-relaxed text-slate-500"><strong class="text-slate-700">Pratinjau pengaturan (perkiraan CSS).</strong><br>Bukan hasil render. Video di atas adalah file ekspor terakhir; tekan “Simpan &amp; render ulang” untuk membuat ekspor baru dengan pengaturan ini.</p>
+                    </div>
+                @endif
+
+                <label class="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" wire:model="subtitlesEnabled" class="mt-0.5 rounded border-slate-300 text-emerald-900 focus:ring-emerald-500"><span class="text-xs leading-relaxed text-slate-600"><strong>Burn-in subtitle</strong><br>Hanya aktif bila transkrip memiliki segmen pada rentang klip. Tanpa transkrip, video tetap dirender tanpa subtitle.</span></label>
+                @error('rerender')<p class="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{{ $message }}</p>@enderror
+                @if (in_array($clip->status->value, ['review', 'approved', 'failed'], true))
+                    <button wire:click="updateRender" wire:loading.attr="disabled" class="btn-primary mt-4 w-full">Simpan & render ulang</button>
+                @else
+                    <p class="mt-3 text-xs text-amber-700">Pengaturan terkunci saat render, jadwal, atau upload aktif.</p>
+                @endif
             </div>
 
             <div class="card card-pad">

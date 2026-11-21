@@ -43,9 +43,12 @@ class VideoRenderServiceTest extends TestCase
 
         Storage::disk('local')->assertExists($result['video']);
         Storage::disk('local')->assertExists($result['subtitle']);
+        Storage::disk('local')->assertExists($result['ass']);
         Storage::disk('local')->assertExists($result['thumbnail']);
 
         $this->assertSame(1024, $result['size_bytes']);
+        $this->assertSame(1080, $result['width']);
+        $this->assertSame(1920, $result['height']);
         $this->assertSame(64, strlen($result['media_hash']));
         $this->assertStringContainsString('00:00:00,000', Storage::disk('local')->get($result['subtitle']));
     }

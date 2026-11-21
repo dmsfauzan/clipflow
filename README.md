@@ -24,6 +24,9 @@ Stack terpasang: Laravel 13, Livewire 4, Tailwind CSS 4 + Vite 8, MySQL 8, datab
 | Login pemilik, tanpa registrasi publik | Selesai |
 | Dashboard Overview + polling | Selesai |
 | Upload privat MP4/MOV/WebM + validasi hak | Selesai |
+| Klip manual dari timestamp (tanpa AI/transkripsi) | Selesai |
+| Komposisi 1080×1920: background blur + foreground tajam + subtitle | Selesai |
+| Pengaturan ukuran foreground/blur/subtitle + render ulang | Selesai |
 | Impor dari link (yt-dlp) + proteksi SSRF | Selesai (butuh yt-dlp) |
 | FFprobe, ekstraksi audio, faster-whisper | Selesai (butuh tool terpasang) |
 | Seleksi AI (Ollama atau 9router/OpenAI-compatible) + validasi timestamp | Selesai |
@@ -134,6 +137,20 @@ php artisan clipflow:check
 ```
 
 Render subtitle membutuhkan FFmpeg build dengan `libass` (umumnya build “full” memilikinya).
+
+Pengaturan komposisi 9:16 di `.env`:
+
+```dotenv
+CLIPFLOW_RENDER_WIDTH=1080
+CLIPFLOW_RENDER_HEIGHT=1920
+CLIPFLOW_RENDER_FPS=30
+CLIPFLOW_FOREGROUND_WIDTH_PERCENT=90
+CLIPFLOW_FOREGROUND_WIDTH_PERCENT_MIN=50
+CLIPFLOW_FOREGROUND_WIDTH_PERCENT_MAX=100
+CLIPFLOW_BLUR_SIGMA=18
+CLIPFLOW_BLUR_SIGMA_MIN=0
+CLIPFLOW_BLUR_SIGMA_MAX=60
+```
 
 ### 3.6 Python + faster-whisper
 
@@ -329,6 +346,25 @@ Penting untuk database queue: `DB_QUEUE_RETRY_AFTER=9000` harus lebih besar dari
 
 Status pipeline dan aturan transisi lengkap: `docs/pipeline.md`.
 
+### Klip manual (tanpa AI)
+
+Buka detail sumber yang sudah selesai FFprobe. Kartu **Tambah klip manual** menerima detik mulai dan selesai. Alur ini tidak memerlukan transkripsi maupun kredensial LLM. Batas durasi mengikuti `CLIPFLOW_MIN_CLIP_SECONDS` / `CLIPFLOW_MAX_CLIP_SECONDS`; bila transkrip tersedia, batas digeser ke batas kalimat terdekat (toleransi 1,5 detik). Rentang yang tumpang tindih dengan klip lain ditolak.
+
+Sumber tanpa audio tetap dapat diunggah dan dirender: FFprobe menandai `has_audio=false`, transkripsi dilewati, dan klip dibuat manual. Output MP4 tidak berisi stream audio.
+
+### Komposisi render 9:16
+
+Semua ekspor memakai kanvas 1080×1920:
+
+- Background: duplikat video yang sama, diskalakan memenuhi kanvas, di-crop hanya pada layer ini, lalu `gblur`.
+- Foreground: video utama saja, tanpa blur, fit penuh tanpa crop/distorsi, terpusat.
+- Subtitle dibakar setelah komposisi, dari transkrip asli dengan timestamp relatif klip.
+- Audio dipetakan satu kali (opsional), H.264, `yuv420p`, 30 fps, SAR 1:1, `+faststart`.
+
+Pengaturan per klip: ukuran foreground 50–100% (default 90% dari kanvas = area 972×1728), blur sigma 0–60 (default 18), dan toggle subtitle. Ubah lewat kartu **Komposisi render** di halaman review, lalu **Simpan & render ulang**. Perubahan membatalkan approval dan jadwal lama; klip kembali ke antrean render dan wajib direview ulang.
+
+Pratinjau kecil di kartu tersebut adalah perkiraan CSS, bukan hasil render. Player di atasnya selalu menampilkan file ekspor terakhir.
+
 ### Template subtitle & render ulang
 
 Subtitle dibakar memakai format ASS dengan ukuran piksel nyata dan posisi yang dihitung dari **tepi area video** (bukan dasar frame), sehingga tidak jatuh di padding hitam.
@@ -476,9 +512,11 @@ php artisan test --compact
 vendor/bin/pint --format agent
 ```
 
-Hasil terakhir: **93 tes lulus, 292 assertion**.
+Hasil terakhir: **107 tes lulus, 382 assertion**.
 
 Mencakup antara lain: akses tanpa login, validasi upload, impor link (validasi URL, proteksi SSRF, mock yt-dlp sukses/gagal, redaksi query URL), driver AI (pemilihan client, request bearer + JSON mode, kode-fence, auth tanpa kebocoran API key, toleransi chunk gagal), kuota YouTube (kapasitas, batas efektif, penjadwalan, penundaan upload), heartbeat worker, notifikasi Telegram (payload, escaping, kegagalan tidak melempar), halaman job gagal, timestamp AI invalid, approval wajib render, approval wajib sebelum upload, perubahan konten membatalkan approval, approve berulang tidak menggandakan jadwal, slot ke-31 pindah hari, jadwal tidak di masa lalu, pause mencegah upload, batas harian dengan zona waktu, concurrent job tidak menggandakan upload, timeout tidak memicu retry buta, token OAuth tidak tampil di respons, render halaman & komponen, serta Range download.
+
+Uji render nyata (butuh FFmpeg) di `tests/Feature/RenderCompositionTest.php` memakai video sintetis horizontal, vertikal, persegi, dan tanpa audio, lalu memeriksa lewat FFprobe: 1080×1920, H.264, `yuv420p`, 30 fps, SAR 1:1, durasi, jumlah stream audio, plus varianci luminansi area tengah (foreground) vs sudut (background blur) dan pengaruh pengaturan blur/foreground terhadap hasil ekspor.
 
 Detail cakupan dan bagian yang **belum** diuji end-to-end: `docs/testing.md`.
 
@@ -486,9 +524,11 @@ Detail cakupan dan bagian yang **belum** diuji end-to-end: `docs/testing.md`.
 
 ## 11. Keterbatasan yang perlu diketahui
 
-- FFmpeg, yt-dlp, dan model Whisper tidak disertakan; lingkungan ini belum memilikinya. Upload file tetap bisa dipakai tanpa yt-dlp, dan pipeline menampilkan error yang bisa dipahami bila tool belum siap. Seleksi AI tetap memerlukan kredensial Ollama atau 9router.
+- FFmpeg/FFprobe terdeteksi di mesin pengembangan ini; model Whisper diunduh otomatis saat transkripsi pertama. Jika tool belum terpasang, pipeline menampilkan error yang bisa dipahami. Seleksi AI tetap memerlukan kredensial Ollama atau 9router; tanpa itu, gunakan klip manual dari timestamp.
 - Uji end-to-end ke akun YouTube nyata **belum dilakukan** karena tidak ada kredensial produksi. Jangan menganggap adapter terverifikasi penuh sebelum mencoba dengan channel uji private.
-- Belum ada face tracking, auto-reframe cerdas, atau penghapusan silence. Layout memakai fit + padding.
+- Belum ada sistem kredit/ledger, registrasi publik multi-pengguna, TikTok, dan Instagram.
+- Belum ada Docker Compose; jalur resmi saat ini Windows + Laragon. Redis didukung lewat konfigurasi queue Laravel tetapi belum didokumentasikan khusus.
+- Belum ada face tracking, auto-reframe cerdas, atau penghapusan silence. Komposisi memakai background blur + foreground fit.
 - Deteksi batas kalimat mengandalkan timestamp segmen Whisper; hasil transkripsi yang buruk dapat menurunkan kualitas potongan.
 - OAuth app dalam status Testing dapat membuat refresh token kedaluwarsa dalam 7 hari (kebijakan Google); hubungkan ulang bila terjadi. Verifikasi aplikasi diperlukan untuk penggunaan publik.
 - Upload 2 GB melalui PHP built-in server tidak disarankan; gunakan Nginx/Apache Laragon atau VPS.

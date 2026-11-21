@@ -23,12 +23,23 @@ return [
         'probe_timeout' => (int) env('CLIPFLOW_PROBE_TIMEOUT', 120),
         'extract_timeout' => (int) env('CLIPFLOW_EXTRACT_TIMEOUT', 1800),
         'render' => [
-            'width' => (int) env('CLIPFLOW_RENDER_WIDTH', 720),
-            'height' => (int) env('CLIPFLOW_RENDER_HEIGHT', 1280),
+            'width' => (int) env('CLIPFLOW_RENDER_WIDTH', 1080),
+            'height' => (int) env('CLIPFLOW_RENDER_HEIGHT', 1920),
+            'fps' => (int) env('CLIPFLOW_RENDER_FPS', 30),
             'preset' => env('CLIPFLOW_RENDER_PRESET', 'veryfast'),
             'crf' => (int) env('CLIPFLOW_RENDER_CRF', 23),
             'audio_bitrate' => env('CLIPFLOW_RENDER_AUDIO_BITRATE', '128k'),
             'timeout' => (int) env('CLIPFLOW_RENDER_TIMEOUT', 3600),
+            'foreground_width_percent' => [
+                'default' => (int) env('CLIPFLOW_FOREGROUND_WIDTH_PERCENT', 90),
+                'min' => (int) env('CLIPFLOW_FOREGROUND_WIDTH_PERCENT_MIN', 50),
+                'max' => (int) env('CLIPFLOW_FOREGROUND_WIDTH_PERCENT_MAX', 100),
+            ],
+            'blur_sigma' => [
+                'default' => (int) env('CLIPFLOW_BLUR_SIGMA', 18),
+                'min' => (int) env('CLIPFLOW_BLUR_SIGMA_MIN', 0),
+                'max' => (int) env('CLIPFLOW_BLUR_SIGMA_MAX', 60),
+            ],
             'subtitle' => [
                 'font' => env('CLIPFLOW_SUBTITLE_FONT', 'Arial'),
                 'font_size' => (int) env('CLIPFLOW_SUBTITLE_FONT_SIZE', 30),

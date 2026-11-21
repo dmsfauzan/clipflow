@@ -15,6 +15,7 @@ class Clip extends Model
 
     protected $fillable = [
         'video_source_id', 'subtitle_template_id', 'user_id', 'transcript_id', 'start_seconds', 'end_seconds', 'duration_seconds',
+        'foreground_width', 'blur_sigma', 'subtitles_enabled',
         'title', 'caption', 'reason', 'ai_score', 'status', 'failure_message', 'rendered_path', 'thumbnail_path',
         'srt_path', 'ass_path', 'rendered_size_bytes', 'rendered_width', 'rendered_height', 'media_hash',
         'render_started_at', 'rendered_at', 'rejected_at', 'reject_reason',
@@ -28,6 +29,9 @@ class Clip extends Model
             'end_seconds' => 'decimal:3',
             'duration_seconds' => 'decimal:3',
             'ai_score' => 'decimal:2',
+            'foreground_width' => 'integer',
+            'blur_sigma' => 'integer',
+            'subtitles_enabled' => 'boolean',
             'render_started_at' => 'datetime',
             'rendered_at' => 'datetime',
             'rejected_at' => 'datetime',
